@@ -57,6 +57,9 @@ pub mod registro {
         descripcion: String,
         monto: u32,
     ) -> Result<()> {
+        // MEJORA PROPIA: el monto de una venta debe ser mayor a 0
+        require!(monto > 0, Errores::MontoInvalido);
+
         context.accounts.venta.set_inner(Venta {
             sku,
             descripcion,
@@ -115,6 +118,9 @@ pub mod registro {
         sku: String,
         nuevo_monto: u32,
     ) -> Result<()> {
+        // MEJORA PROPIA: el nuevo monto tambien debe ser mayor a 0
+        require!(nuevo_monto > 0, Errores::MontoInvalido);
+
         let venta = &mut context.accounts.venta;
         let viejo_monto = venta.monto;
         venta.monto = nuevo_monto;
@@ -128,15 +134,50 @@ pub mod registro {
 
         Ok(())
     }
+
+    /////////////////////////// Eliminar Cliente (baja) ///////////////////////////
+    // Solo se puede dar de baja a un cliente SIN ventas activas. La regla se comprueba aqui,
+    // en Rust, no solo en el frontend. El contexto EliminarCliente lleva "close = owner":
+    // la cuenta del cliente se cierra al final y su rent vuelve al owner.
+    // id_counter NO se modifica: los ids no se reutilizan.
+    pub fn eliminar_cliente(context: Context<EliminarCliente>, _id_cliente: u16) -> Result<()> {
+        let cliente_key = context.accounts.cliente.key(); // Se lee ANTES del &mut de registro
+        let id_cliente = context.accounts.cliente.id_cliente;
+
+        require!(
+            context.accounts.cliente.historial.is_empty() && context.accounts.cliente.compras == 0,
+            Errores::ClienteConVentas
+        );
+
+        let registro = &mut context.accounts.registro;
+
+        require!(
+            registro.clientes.contains(&cliente_key),
+            Errores::ClienteNoRegistrado
+        );
+
+        registro.clientes.retain(|&k| k != cliente_key); // Quita solo la referencia de este cliente
+
+        msg!("Cliente con id: {} dado de baja", id_cliente);
+
+        Ok(())
+    }
 }
 
 /////////////////////////// Codigos de Error ///////////////////////////
+// Los errores nuevos van al final para no reordenar los existentes.
 #[error_code]
 pub enum Errores {
     #[msg("Error, no eres el owner del registro")]
     NoOwner,
     #[msg("Error, la venta no esta en el historial del cliente")]
     NoSKU,
+    #[msg("Error, no se puede dar de baja a un cliente con ventas activas")]
+    ClienteConVentas,
+    #[msg("Error, el cliente no esta en la lista del registro")]
+    ClienteNoRegistrado,
+    #[msg("Error, el monto debe ser mayor a 0")]
+    MontoInvalido,
 }
 
 /////////////////////////// CUENTAS ///////////////////////////
@@ -331,4 +372,27 @@ pub struct EliminarVenta<'info> {
         bump
     )]
     pub venta: Account<'info, Venta>,
+}
+
+/////////////////////////// Eliminar Cliente ///////////////////////////
+/// Instruccion: eliminar_cliente -> cierra la cuenta del cliente
+
+#[derive(Accounts)]
+#[instruction(id_cliente: u16)]
+pub struct EliminarCliente<'info> {
+    #[account(mut)]
+    pub owner: Signer<'info>, // mut: recibe el rent de la cuenta cerrada
+
+    // mut: hay que quitar la referencia del cliente de registro.clientes
+    #[account(mut, has_one = owner @ Errores::NoOwner)]
+    pub registro: Account<'info, Registro>,
+
+    // La PDA se deriva con el registro y el id: pertenencia garantizada por las seeds
+    #[account(
+        mut,
+        close = owner,
+        seeds = [b"cliente", registro.key().as_ref(), id_cliente.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub cliente: Account<'info, Cliente>,
 }
