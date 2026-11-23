@@ -7,6 +7,8 @@ import { leerRegistro, type RegistroUI } from '../solana/lecturas';
 import { negocioValido } from '../solana/validaciones';
 import { ErrorTransaccion, ErrorConfirmacionPendiente, enlaceTransaccion, traducir, type OpcionesEnvio } from '../solana/tx';
 import { crearRegistro, crearCliente, registrarVenta, cambiarMonto, hacerDevolucion } from '../solana/acciones';
+import { ResumenVentas } from './ResumenVentas';
+
 
 type Operacion = 'registro' | 'cliente' | 'venta' | 'monto' | 'devolucion';
 const operaciones: { id: Operacion; texto: string }[] = [
@@ -99,6 +101,7 @@ export function Registro({ onCambio, onOcupado }: { onCambio: () => void; onOcup
       <p className="help">El nombre y la autoridad determinan la dirección del registro. Puedes consultar otra autoridad en modo lectura.</p>
       {errorLectura && <p className="notice error" role="alert">{errorLectura}</p>}
     </section>
+        {registro && <ResumenVentas registro={registro} />}
     <div className="workspace-grid">
       <section className="panel customers-panel"><div className="panel-heading"><h3>Clientes y ventas</h3>{registro && <span className="count">{registro.clientes.length} clientes</span>}</div>
         {!registro ? <div className="empty-state"><span className="empty-symbol">◎</span><h4>{consultado ? 'El registro todavía no existe' : 'El negocio aparecerá aquí'}</h4><p>{consultado ? 'Comprueba el nombre y la autoridad, o crea un registro con tu wallet conectada.' : 'Consulta el registro para ver sus clientes y las ventas activas de cada uno.'}</p></div> : <>
